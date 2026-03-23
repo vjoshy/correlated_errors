@@ -180,13 +180,20 @@ simulate_bandwidth <- function(n, rho, sigma2, B,
   }
   
   # summarize
-  data.frame(
-    n      = n,
-    rho    = rho,
-    method = method_names,
-    mean_h   = colMeans(h_mat),
-    sd_h     = apply(h_mat, 2, sd),
-    mean_mse  = colMeans(mse_mat),
-    sd_mse    = apply(mse_mat, 2, sd)
+  
+  return(
+    list(
+      h_mat = h_mat,
+      summary = data.frame(
+        n      = n,
+        rho    = rho,
+        method = method_names,
+        mean_h   = colMeans(h_mat),
+        sd_h     = apply(h_mat, 2, sd),
+        mean_mse  = colMeans(mse_mat),
+        sd_mse    = apply(mse_mat, 2, sd)
+      )
+    )
   )
+  
 }

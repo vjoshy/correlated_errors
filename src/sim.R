@@ -3,9 +3,9 @@ source("src/functions.R")
 start <- Sys.time()
 
 # simulation parameters
-n_values  <- c(10)
-#n_values <- c(100, 500, 1000)
-#
+#n_values  <- c(10)
+n_values <- c(10, 10, 10)
+
 rho_values  <- c(0, 0.3, 0.6, 0.9)
 sigma2 <- 0.5
 
