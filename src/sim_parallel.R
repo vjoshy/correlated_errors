@@ -9,7 +9,7 @@ n_values <- c(1000)
 rho_values  <- c(0, 0.3, 0.6, 0.9)
 sigma2 <- 0.5
 
-B  <- 50
+B  <- 500
 l_values  <- c(1, 2, 5)
 g_values  <- c(3, 5, 10)
 h_grid <- seq(0.01, 0.2, by = 0.001)
@@ -25,7 +25,6 @@ clusterEvalQ(cl, library(MASS))
 clusterExport(cl, varlist = c("bandwidth_cv", "bandwidth_mcv", "bandwidth_pcv", 
                               "bandwidth_cdpi", "local_poly_est", 
                               "generate_ar1_errors", "r_true"))
-
 
 clusterSetRNGStream(cl, 123) 
 

@@ -220,20 +220,16 @@ simulate_bandwidth <- function(n, rho, sigma2, B,
                     paste0("PCV_g", g_values),
                     "CDPI")
   
-  # Export the scenario-specific variables to the cluster workers
   clusterExport(cl, varlist = c("n", "rho", "sigma2", "x", "y_true", 
                                 "l_values", "g_values", "h_grid", "p", 
                                 "method_names"), 
                 envir = environment())
   
-  # Run the B iterations in parallel with a progress bar!
   sim_results <- pblapply(1:B, function(b) {
     
-    # Generate data
     errors <- if (rho == 0) rnorm(n, 0, sqrt(sigma2)) else generate_ar1_errors(n, rho, sigma2)
     y <- y_true + errors
     
-    # Bandwidth Selection
     h_loocv <- bandwidth_cv(x, y, p, h_grid)$minimum
     h_mcv   <- sapply(l_values, function(l) bandwidth_mcv(x, y, p, l, h_grid)$minimum)
     h_pcv   <- sapply(g_values, function(g) bandwidth_pcv(x, y, p, g, h_grid)$minimum)
@@ -241,26 +237,22 @@ simulate_bandwidth <- function(n, rho, sigma2, B,
     
     all_h <- c(h_loocv, h_mcv, h_pcv, h_cdpi)
     
-    # Compute Fits and MSE 
     mse_vals <- numeric(length(all_h))
     for (m in seq_along(all_h)) {
       y_hat       <- sapply(x, function(x0) local_poly_est(x0, x, y, p, all_h[m])$beta[1])
       mse_vals[m] <- mean((y_hat - y_true)^2)
     }
     
-    # Return the row results for this specific iteration
     list(h = all_h, mse = mse_vals)
     
-  }, cl = cl) # Execute on the cluster
+  }, cl = cl) 
   
-  # Reconstruct the h_mat and mse_mat from the parallelized list results
   h_mat   <- do.call(rbind, lapply(sim_results, `[[`, "h"))
   mse_mat <- do.call(rbind, lapply(sim_results, `[[`, "mse"))
   
   colnames(h_mat)   <- method_names
   colnames(mse_mat) <- method_names
   
-  # Summarize and return
   return(
     list(
       h_mat = h_mat,
