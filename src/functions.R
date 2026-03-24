@@ -28,15 +28,24 @@ generate_ar1_errors <- function(n, rho, sigma2) {
 #'
 local_poly_est <- function(x0, x, y, p, h, kernel = dnorm) {
   stopifnot(length(x0) == 1)
+  
+  dx <- x - x0
   x_mat <- matrix(1, nrow = length(x), ncol = p + 1)
+  
   if (p > 0) {
-    dx <- x - x0
-    for (j in 1:p) x_mat[, j + 1] <- dx^j / factorial(j)
+    for (j in 1:p) x_mat[, j + 1] <- (dx^j) / factorial(j)
   }
-  w      <- (1/h) * kernel((x0 - x) / h)
-  WX     <- x_mat * w
-  wt_x   <- MASS::ginv(t(x_mat) %*% WX) %*% t(x_mat * w)
-  list(beta = wt_x %*% y, smooth = wt_x[1, ])
+  w  <- kernel(dx / h) / h
+  WX <- x_mat * w
+  XtWX <- crossprod(x_mat, WX)
+
+  inv_XtWX <- tryCatch(
+    solve(XtWX), 
+    error = function(e) MASS::ginv(XtWX)
+  )
+  wt_x <- inv_XtWX %*% t(WX)
+  
+  list(beta = as.numeric(wt_x %*% y), smooth = wt_x[1, ])
 }
 
 #' Bandwidth Leave one out - Cross-validation (From A2)
@@ -127,73 +136,143 @@ bandwidth_cdpi <- function(x, y, kernel = dnorm) {
 }
 
 
-# simulation
+# # simulation
+# simulate_bandwidth <- function(n, rho, sigma2, B, 
+#                                l_values, g_values,
+#                                h_grid, p = 1) {
+#   x     <- (1:n) / n
+#   y_true <- r_true(x)
+#   
+#   # storage: methods are LOOCV, MCV(l) for each l, PCV(g) for each g, CDPI
+#   method_names <- c("LOOCV",
+#                     paste0("MCV_l", l_values),
+#                     paste0("PCV_g", g_values),
+#                     "CDPI")
+#   
+#   mse_mat <- matrix(NA, nrow = B, ncol = length(method_names))
+#   colnames(mse_mat) <- method_names
+#   
+#   h_mat <- matrix(NA, nrow = B, ncol = length(method_names))
+#   colnames(h_mat) <- method_names
+#   
+#   for (b in 1:B) {
+#     if (b %% 50 == 0) cat("n =", n, "| rho =", rho, "| rep", b, "/", B, "\n")
+#     
+#     # generate data
+#     errors <- if (rho == 0) rnorm(n, 0, sqrt(sigma2)) else
+#       generate_ar1_errors(n, rho, sigma2)
+#     y <- y_true + errors
+#     
+#     #  LOOCV
+#     h_loocv <- bandwidth_cv(x, y, p, h_grid)$minimum
+#     
+#     #  MCV 
+#     h_mcv <- sapply(l_values, function(l)
+#       bandwidth_mcv(x, y, p, l, h_grid)$minimum)
+#     
+#     #  PCV 
+#     h_pcv <- sapply(g_values, function(g)
+#       bandwidth_pcv(x, y, p, g, h_grid)$minimum)
+#     
+#     #  CDPI 
+#     h_cdpi <- bandwidth_cdpi(x, y)$minimum
+#     
+#     #  compute fits and MSE 
+#     all_h <- c(h_loocv, h_mcv, h_pcv, h_cdpi)
+#     h_mat[b, ]   <- all_h
+#     
+#     for (m in seq_along(all_h)) {
+#       y_hat        <- sapply(x, function(x0)
+#         local_poly_est(x0, x, y, p, all_h[m])$beta[1])
+#       mse_mat[b, m] <- mean((y_hat - y_true)^2)
+#     }
+#   }
+#   
+#   # summarize
+#   
+#   return(
+#     list(
+#       h_mat = h_mat,
+#       summary = data.frame(
+#         n      = n,
+#         rho    = rho,
+#         method = method_names,
+#         mean_h   = colMeans(h_mat),
+#         sd_h     = apply(h_mat, 2, sd),
+#         mean_mse  = colMeans(mse_mat),
+#         sd_mse    = apply(mse_mat, 2, sd)
+#       )
+#     )
+#   )
+#   
+# }
+
+
 simulate_bandwidth <- function(n, rho, sigma2, B, 
                                l_values, g_values,
-                               h_grid, p = 1) {
-  x     <- (1:n) / n
+                               h_grid, p = 1, cl = NULL) {
+  
+  x      <- (1:n) / n
   y_true <- r_true(x)
   
-  # storage: methods are LOOCV, MCV(l) for each l, PCV(g) for each g, CDPI
   method_names <- c("LOOCV",
                     paste0("MCV_l", l_values),
                     paste0("PCV_g", g_values),
                     "CDPI")
   
-  mse_mat <- matrix(NA, nrow = B, ncol = length(method_names))
-  colnames(mse_mat) <- method_names
+  # Export the scenario-specific variables to the cluster workers
+  clusterExport(cl, varlist = c("n", "rho", "sigma2", "x", "y_true", 
+                                "l_values", "g_values", "h_grid", "p", 
+                                "method_names"), 
+                envir = environment())
   
-  h_mat <- matrix(NA, nrow = B, ncol = length(method_names))
-  colnames(h_mat) <- method_names
-  
-  for (b in 1:B) {
-    if (b %% 50 == 0) cat("n =", n, "| rho =", rho, "| rep", b, "/", B, "\n")
+  # Run the B iterations in parallel with a progress bar!
+  sim_results <- pblapply(1:B, function(b) {
     
-    # generate data
-    errors <- if (rho == 0) rnorm(n, 0, sqrt(sigma2)) else
-      generate_ar1_errors(n, rho, sigma2)
+    # Generate data
+    errors <- if (rho == 0) rnorm(n, 0, sqrt(sigma2)) else generate_ar1_errors(n, rho, sigma2)
     y <- y_true + errors
     
-    #  LOOCV
+    # Bandwidth Selection
     h_loocv <- bandwidth_cv(x, y, p, h_grid)$minimum
+    h_mcv   <- sapply(l_values, function(l) bandwidth_mcv(x, y, p, l, h_grid)$minimum)
+    h_pcv   <- sapply(g_values, function(g) bandwidth_pcv(x, y, p, g, h_grid)$minimum)
+    h_cdpi  <- bandwidth_cdpi(x, y)$minimum
     
-    #  MCV 
-    h_mcv <- sapply(l_values, function(l)
-      bandwidth_mcv(x, y, p, l, h_grid)$minimum)
-    
-    #  PCV 
-    h_pcv <- sapply(g_values, function(g)
-      bandwidth_pcv(x, y, p, g, h_grid)$minimum)
-    
-    #  CDPI 
-    h_cdpi <- bandwidth_cdpi(x, y)$minimum
-    
-    #  compute fits and MSE 
     all_h <- c(h_loocv, h_mcv, h_pcv, h_cdpi)
-    h_mat[b, ]   <- all_h
     
+    # Compute Fits and MSE 
+    mse_vals <- numeric(length(all_h))
     for (m in seq_along(all_h)) {
-      y_hat        <- sapply(x, function(x0)
-        local_poly_est(x0, x, y, p, all_h[m])$beta[1])
-      mse_mat[b, m] <- mean((y_hat - y_true)^2)
+      y_hat       <- sapply(x, function(x0) local_poly_est(x0, x, y, p, all_h[m])$beta[1])
+      mse_vals[m] <- mean((y_hat - y_true)^2)
     }
-  }
+    
+    # Return the row results for this specific iteration
+    list(h = all_h, mse = mse_vals)
+    
+  }, cl = cl) # Execute on the cluster
   
-  # summarize
+  # Reconstruct the h_mat and mse_mat from the parallelized list results
+  h_mat   <- do.call(rbind, lapply(sim_results, `[[`, "h"))
+  mse_mat <- do.call(rbind, lapply(sim_results, `[[`, "mse"))
   
+  colnames(h_mat)   <- method_names
+  colnames(mse_mat) <- method_names
+  
+  # Summarize and return
   return(
     list(
       h_mat = h_mat,
       summary = data.frame(
-        n      = n,
-        rho    = rho,
-        method = method_names,
-        mean_h   = colMeans(h_mat),
-        sd_h     = apply(h_mat, 2, sd),
+        n         = n,
+        rho       = rho,
+        method    = method_names,
+        mean_h    = colMeans(h_mat),
+        sd_h      = apply(h_mat, 2, sd),
         mean_mse  = colMeans(mse_mat),
         sd_mse    = apply(mse_mat, 2, sd)
       )
     )
   )
-  
 }
