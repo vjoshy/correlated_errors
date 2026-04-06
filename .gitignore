@@ -1,3 +1,5 @@
 *.pdf
 archive/
 .Rproj.user
+*.ini
+*.Rhistory
