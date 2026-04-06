@@ -147,6 +147,7 @@ sigma2 <- 0.5
 p <- 1
 x <- (1:n) / n
 y_true <- r_true(x)
+h_grid <- seq(0.01, 0.2, by = 0.001)
 
 make_fit_plot <- function(rho_val) {
   set.seed(123)
@@ -202,7 +203,7 @@ make_fit_plot <- function(rho_val) {
     ) +
     scale_color_manual(values = c(
       "True" = "red",
-      "LOOCV" = "purple",
+      "LOOCV" = "blue",
       "MCV_l5" = "darkgreen",
       "PCV_g5" = "orange",
       "CDPI" = "skyblue"
@@ -227,7 +228,7 @@ ggsave("plots/fit_compare_rho09.png", p_r09, width = 8, height = 5, dpi = 300)
 make_mcv_compare_plot <- function(rho, seed = 123) {
   set.seed(seed)
   
-  errors <- generate_ar1_errors(n, rho, sigma2)
+  errors <- generate_ar1_errors(1000, rho, 0.5)
   y <- y_true + errors
   
   # bandwidths
@@ -253,6 +254,9 @@ make_mcv_compare_plot <- function(rho, seed = 123) {
     local_poly_est(x0, x, y, p = p, h = h_l5)$beta[1]
   })
   
+  # light downsampling of points so slide is not too dense
+  df_points <- tibble(x = x, y = y)
+  
   df_lines <- tibble(
     x = x,
     `True regression` = y_true,
@@ -264,7 +268,7 @@ make_mcv_compare_plot <- function(rho, seed = 123) {
     pivot_longer(-x, names_to = "method", values_to = "fit")
   
   list(
-    points = x,
+    points = df_points,
     lines = df_lines,
     h = c(
       LOOCV = h_loocv,
@@ -327,3 +331,122 @@ p_r09_mcv <- plot_mcv_compare(obj_r09, 0.9)
 p_r03_mcv
 p_r06_mcv
 p_r09_mcv
+
+ggsave("plots/compare_mcv_rho03.png", p_r03_mcv, width = 8, height = 5, dpi = 300)
+ggsave("plots/compare_mcv_rho06.png", p_r06_mcv, width = 8, height = 5, dpi = 300)
+ggsave("plots/compare_mcv_rho09.png", p_r09_mcv, width = 8, height = 5, dpi = 300)
+
+
+
+
+
+make_pcv_compare_plot <- function(rho, seed = 123) {
+  set.seed(seed)
+  
+  errors <- generate_ar1_errors(1000, rho, 0.5)
+  y <- y_true + errors
+  
+  # bandwidths
+  h_loocv <- bandwidth_cv(x, y, p = p, h_grid = h_grid)$minimum
+  h_g3   <- bandwidth_pcv(x, y, p = p, g = 3, h_grid = h_grid)$minimum
+  h_g5    <- bandwidth_pcv(x, y, p = p, g = 5, h_grid = h_grid)$minimum
+  h_g10    <- bandwidth_pcv(x, y, p = p, g = 10, h_grid = h_grid)$minimum
+  
+  # fits
+  y_loocv <- sapply(x, function(x0) {
+    local_poly_est(x0, x, y, p = p, h = h_loocv)$beta[1]
+  })
+  
+  y_g3 <- sapply(x, function(x0) {
+    local_poly_est(x0, x, y, p = p, h = h_g3)$beta[1]
+  })
+  
+  y_g5 <- sapply(x, function(x0) {
+    local_poly_est(x0, x, y, p = p, h = h_g5)$beta[1]
+  })
+  
+  y_g10 <- sapply(x, function(x0) {
+    local_poly_est(x0, x, y, p = p, h = h_g10)$beta[1]
+  })
+  
+  # light downsampling of points so slide is not too dense
+  df_points <- tibble(x = x, y = y)
+  
+  df_lines <- tibble(
+    x = x,
+    `True regression` = y_true,
+    `LOOCV` = y_loocv,
+    `PCV g=3` = y_g3,
+    `PCV g=5` = y_g5,
+    `PCV g=10` = y_g10
+  ) %>%
+    pivot_longer(-x, names_to = "method", values_to = "fit")
+  
+  list(
+    points = df_points,
+    lines = df_lines,
+    h = c(
+      `LOOCV` = h_loocv,
+      `PCV g=3` = h_g3,
+      `PCV g=5` = h_g5,
+      `PCV g=10` = h_g10
+    )
+  )
+}
+
+plot_pcv_compare <- function(obj, rho_value) {
+  ggplot() +
+    geom_point(
+      data = obj$points,
+      aes(x = x, y = y),
+      color = "grey70", alpha = 0.6, size = 0.7
+    ) +
+    geom_line(
+      data = obj$lines,
+      aes(x = x, y = fit, color = method),
+      linewidth = 1
+    ) +
+    scale_color_manual(
+      values = c(
+        "True regression" = "red",
+        "LOOCV" = "blue",
+        "PCV g=3" = "black",
+        "PCV g=5" = "darkgreen",
+        "PCV g=10" = "purple"
+      )
+    ) +
+    labs(
+      title = paste0("LOOCV vs PCV for rho = ", rho_value),
+      subtitle = paste0(
+        "h_LOOCV = ", round(obj$h["LOOCV"], 3),
+        ", h_g3 = ", round(obj$h["PCV g=3"], 3),
+        ", h_g5 = ", round(obj$h["PCV g=5"], 3),
+        ", h_g10 = ", round(obj$h["PCV g=10"], 3)
+      ),
+      x = "x",
+      y = "y",
+      color = NULL,
+      linetype = NULL
+    ) +
+    theme_minimal(base_size = 14) +
+    theme(
+      legend.position = "bottom",
+      plot.title = element_text(face = "bold")
+    )
+}
+
+obj_r03_pcv <- make_pcv_compare_plot(rho = 0.3, seed = 123)
+obj_r06_pcv <- make_pcv_compare_plot(rho = 0.6, seed = 123)
+obj_r09_pcv <- make_pcv_compare_plot(rho = 0.9, seed = 123)
+
+p_r03_pcv <- plot_pcv_compare(obj_r03_pcv, 0.3)
+p_r06_pcv <- plot_pcv_compare(obj_r06_pcv, 0.6)
+p_r09_pcv <- plot_pcv_compare(obj_r09_pcv, 0.9)
+
+p_r03_pcv
+p_r06_pcv
+p_r09_pcv
+
+ggsave("plots/compare_pcv_rho03.png", p_r03_pcv, width = 8, height = 5, dpi = 300)
+ggsave("plots/compare_pcv_rho06.png", p_r06_pcv, width = 8, height = 5, dpi = 300)
+ggsave("plots/compare_pcv_rho09.png", p_r09_pcv, width = 8, height = 5, dpi = 300)
