@@ -81,8 +81,8 @@ bandwidth_mcv <- function(x, y, p, l, h_grid, kernel = dnorm) {
   for (i in seq_along(h_grid)) {
     cv_vals <- numeric(n)
     for (j in 1:n) {
-      keep       <- which(abs((1:n) - j) > l)  # indices where |i - j| > l
-      fit        <- local_poly_est(x[j], x[keep], y[keep], p, h_grid[i], kernel)
+      keep   <- which(abs((1:n) - j) > l)  # indices where |i - j| > l
+      fit    <- local_poly_est(x[j], x[keep], y[keep], p, h_grid[i], kernel)
       cv_vals[j] <- (fit$beta[1] - y[j])^2
     }
     mse_grid[i] <- mean(cv_vals)

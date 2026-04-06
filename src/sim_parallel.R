@@ -30,7 +30,7 @@ clusterSetRNGStream(cl, 123)
 
 
 results_list <- vector("list", length(n_values) * length(rho_values))
-idx          <- 1
+idx  <- 1
 
 
 for (n in n_values) {
