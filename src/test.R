@@ -1,4 +1,6 @@
 source("src/functions.R")
+source("src/mixed_functions.R")
+source("src/bandwidth_selectors.R")
 
 set.seed(123)
 
@@ -136,3 +138,6 @@ grid.arrange(
   plot_list[[1]], plot_list[[2]],
   plot_list[[3]], plot_list[[4]],
   ncol = 2)
+
+
+

@@ -3,3 +3,4 @@ archive/
 .Rproj.user
 *.ini
 *.Rhistory
+.positai
